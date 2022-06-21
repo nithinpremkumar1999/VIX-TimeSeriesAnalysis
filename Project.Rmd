@@ -1,0 +1,774 @@
+---
+title: "Predicting VIX: A Time Series Analysis"
+author: Nithin Premkumar 1005555436
+fontsize: 1001pt
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+header-includes: \usepackage{amsmath} \usepackage{color}
+editor_options: 
+  markdown: 
+    wrap: 72
+    keep_md: true
+  chunk_output_type: inline
+---
+
+```{=html}
+<style>
+pre {
+  font-size: 17px;
+}
+</style>
+```
+<table align="center">
+
+<tr>
+
+<td align="center" width="9999">
+
+
+<table align="left">
+
+<tr>
+
+<td align="left" width="9999">
+
+
+# Table of contents
+
+[ 
+1. [Abstract](#abstract)<br/> \
+2. [Introduction](#introduction)<br/> \
+3. [Model Specification](#modelspecify)<br/> \
+4. [Fitting and Diagnostics](#fittingdiag)<br/> \
+5. [Forecasting](#forecasting)<br/>  \
+6. [Discussion](#discussion)<br/> \
+7. [Bibliography](#bibliography)<br/> \
+8. [Appendices](#appendices)<br/> ]{style="Baskerville; font-size:1.5em;"}
+
+## Abstract <a name="abstract"></a> {#abstract}
+
+[The availability of a good predictor of implied volatility is a desirable knowledge that a person or a firm would need for participating in the stock exchange market. Time Series Analysis is a specific way of analyzing a sequence of data points collected over time [5]. With the availability of information on past VIX values, we will apply time series methods to analyze VIX and predict its behavior in the future.\
+\
+In our analysis, we discover that it is possible to forecast future values of VIX by training a model on the present and past values. The predictions made from this project should be taken with a grain of salt, as there are factors that can influence VIX. These external influences are tough to code in our model or predict by the model. It is better to train our time series model on data relevant to the present, as different periods often have a different trend of VIX. \
+]{style="Baskerville; font-size:1.5em;"}
+
+## Introduction <a name="introduction"></a> {#introduction}
+
+[Market volatility is one of the critical factors that determine a nation's economy at the moment; in an open economy, many factors can affect this. Therefore it is crucial to understand realized and implied volatility; realized volatility assesses variation in returns for an investment product by analyzing its historical returns within a defined period [1]; implied volatility is the market's forecast of a likely movement in a security's price. It is a metric used by investors to estimate future fluctuations (volatility) of a security's price based on certain predictive factors. The security's price reflects the value of the asset underlying it [2]. \
+\
+This project deals with understanding implied volatility and trying to develop a model that can forecast future fluctuations. In order to accomplish this task, we will be using Monthly CBOE Volatility Index (VIX). VIX is a real-time index representing the market's expectations for the relative strength of the S&P 500 index (SPX). The data set contains information from 1990, February 01 to 2021, December 13. [3] \ ]{style="Baskerville; font-size:1.5em;"}
+
+```{r, include=FALSE}
+library(ggplot2)
+library(splitTools)
+library(tseries)
+library(aTSA)
+library(TSA)
+library(gdata)
+library(psych)
+library(ggpubr)
+library(dplyr)
+setwd("C:/Users/nithi/OneDrive - University of Toronto/Year -4/STA457/project")
+data = read.csv("Data.csv")
+```
+
+```{r, include=FALSE}
+data$ï..Date = as.Date(data$ï..Date)
+names(data)[names(data) == "ï..Date"] <- "Date"
+```
+
+```{r, echo=FALSE}
+head(data, 3)
+tail(data, 3)
+```
+
+\
+
+[In order to make predictions, we should be somewhat skeptical of our results, and this is because specific events, global or local, can influence VIX. These shocks are unpredictable and can significantly affect the volatility causing a drastic change in VIX. \
+\
+The data trend is not something constant the trend in the 1990s may no longer be applicable for making predictions for future values. Therefore, while training our model, we should be cautious of this. Nonetheless, forecasts help gauge a possible future value of VIX.\
+\
+A model is as good as the data it is trained upon, having relevant data is more critical than having extensive data. The following plot can further explain the relevancy of data for future values: \ ]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+plot(data, type="l", col="Black", xlim=c(as.Date("1990-02-01"), as.Date("2021-12-13")), main="VIX vs Year", sub="FIgure 1")
+abline(v=as.Date("1993-06-01"), col="blue")
+abline(v=as.Date("1998-06-01"), col="blue")
+abline(v=as.Date("2002-12-01"), col="blue")
+abline(v=as.Date("2007-09-01"), col="blue")
+abline(v=as.Date("2009-12-01"), col="blue")
+```
+
+[The plot shows that we can form six segments across time according to the general trend of the VIX. However, we can see some extreme peaks in some sections that deviate from the general trend. Possible causes to these spikes could be: \
+\
+**Section 1**: the major incident was Gulf War 1, an armed campaign waged by United States-led coalition of 35 nations against Iraq in response to the Iraqi invasion and annexation of Kuwait. 1990, August – 1991, February.\
+**Section 2**: had no drastic peaks. \
+**Section 3**: The Russian financial crisis hit Russia on 17 August 1998. It resulted in the Russian government and the Russian Central Bank devaluing the ruble and defaulting on its debt. In 2001, stock prices took a sharp downturn in stock markets across the United States, Canada, Asia, and Europe. \
+**Section 4**: no significant spikes. \
+**Section 5**: The bankruptcy of Lehman Brothers in 2008 September was the climax of the subprime mortgage crisis. \
+**Section 6**: the debit-ceiling crisis of 2011 due to the massive increases in federal spending following the Great Recession of 2008. The covid-19 pandemic hit on March 2020 worldwide. \ ]{style="Baskerville; font-size:1.5em;"}
+\
+[This project will take two perspectives on this matter, one model will consider the entire dataset for training, and the second model will consider the data from 2010 January only. \ ]{style="Baskerville; font-size:1.5em;"}
+
+## Model Specification <a name="modelspecify"></a> {#modelspecify}
+
+[In order to forecast future VIX data, a model has to be developed that replicates a general behavior of VIX; this can be accomplished by developing an Autoregressive Integrated Moving Average (ARIMA) model. Hence, these models have assumed great importance in real-world modeling processes. An ARIMA model has three parameters, p - order of autoregressive part, d - differencing order, and q - order of moving average part. The challenging part of this assignment is to find optimal values for these parameters.\
+\
+There are general workflows to figure out the values of parameters; this involves plotting the data set, mean-level plot, plotting the autocorrelation function (ACF), and the partial autocorrelation function (PACF). \
+\
+**Model 1: Considering the entire dataset** \
+\
+Part of the data is excluded from training the model to test its validity. Therefore 10% of the data is test data, and the remaining 90% is training data. The values of p,d, and q are determined using the training data. \ ]{style="Baskerville; font-size:1.5em;"}
+
+```{r, include=FALSE}
+idx = 1:as.integer(dim(data)[1] * 0.9)
+train = data[idx, ]
+test = data[-idx, ]
+```
+
+```{r, echo=FALSE, fig.width=10}
+cummeanx = cumsum(train$VIX) / seq_along(train$VIX)
+plot(train$Date, train$VIX, xlab="time", ylab="Time Series VIX", type="l", main="VIX vs Year", sub="Figure 2")
+plot(cummeanx, xlab="time", ylab="Mean Level", type="l", main="Mean level training data", sub="Figure 3")
+hist(train$VIX, col="Steelblue", xlab="", main="Histogram of training data", sub="Figure 4")
+```
+
+[There is no stationarity in the training data from the time plot as VIX values rise and fall frequently; this is also seen in the mean level plot as some cliffs. The data also seemed too heavily skewed to the right from the histogram. \
+\ ]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+acf(train$VIX, lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Sample ACF", main="", sub="Figure 5")
+pacf(train$VIX, lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Partial Sample ACF", main="", sub="Figure 6")
+```
+
+[By analyzing the ACF and PACF plots, we can see that the ACF plot does not tend to 0 quickly, which is a sign of non-stationarity. An ADF and KPSS test can be carried out to get statistical inference about stationarity. \
+If the p-value of ADF test is greater 0.01, we can infer that data is non-stationary. \
+If the p-value of the KPSS test is lower than 0.01, we can infer the data is non-stationary. \
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE}
+VIX.adf = adf.test(train$VIX)
+VIX.kpss = kpss.test(train$VIX)
+```
+
+[We can conclude that the data is non-stationary. \
+\
+It is easier to analyze stationary time series data. Therefore, the training data were transformed by taking a difference of the inverse of the training data. The inverse was taken to normalize the training data, and an ADF and KPSS test was tested on the transformed data.\
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE}
+y_3 = diff((1/train$VIX), differences=1)
+y_3.adf = adf.test(y_3)
+y_3.kpss = kpss.test(y_3)
+```
+
+[We can conclude that the transformed data is stationary. \
+\
+The ACF and PACF plots of the transformed data were taken to identify AR or MA signatures.\
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+acf(y_3, lag.max = 30, na.action = na.pass, xlab="Lag", ylab="Sample ACF", main="", sub="Figure 7")
+pacf(y_3, lag.max = 30, na.action = na.pass, xlab="Lag", ylab="Partial Sample ACF", main="", sub="Figure 8")
+```
+
+[From the ACF plot, we can assume the MA order, q = 1. \
+From the PACF plot, we can assume the AR order, p = 2. \
+However, we can find the optimal value of p and q by finding orders with the lowest AIC and BIC scores. After testing for this, p = 2 and q = 2. The above plots do not indicate any seasonality too. \
+Therefore, we choose these parameters as our first model's parameters. \
+\ ]{style="Baskerville; font-size:1.5em;"}
+
+[**Model 2: Using data since 2010 January**\
+\
+To test the model, we use data from 2021 January, and the remaining data is used for evaluating the values of p, d, and q.\
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, include=FALSE}
+seg_start = which(data$Date==as.Date("2009-12-01"))
+data_seg = subset(data, Date>=as.Date("2009-12-01"))
+train_seg = subset(data_seg, Date<=as.Date("2020-12-01"))
+test_seg = subset(data_seg, Date>as.Date("2020-12-01"))
+```
+
+```{r, echo=FALSE, fig.width=10}
+cummeanx = cumsum(train_seg$VIX) / seq_along(train_seg$VIX)
+plot(train_seg$Date, train_seg$VIX, xlab="time", ylab="Time Series VIX", type="l", main="VIX vs Year", sub="Figure 9")
+plot(cummeanx, xlab="time", ylab="Mean Level", type="l", main="Mean level training data", sub="Figure 10")
+hist(train_seg$VIX, col="Steelblue", main="Histogram of training data", sub="Figure 11")
+```
+
+[There is no stationarity in the training data from the time plot as VIX values rise and fall frequently; this is also seen in the mean level plot as some cliffs. The data also seemed too heavily skewed to the right from the histogram.\
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+acf(train_seg$VIX, lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Sample ACF", main="", sub="Figure 12")
+pacf(train_seg$VIX, lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Partial Sample ACF", main="", sub="Figure 13")
+```
+
+[By analyzing the ACF and PACF plots, we can see that the ACF plot does not tend to 0 quickly, which is a sign of non-stationarity. An ADF and KPSS test can be carried out to get statistical inference about stationarity.\
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE}
+VIX_seg.adf = adf.test(train_seg$VIX)
+VIX_seg.kpss = kpss.test(train_seg$VIX)
+```
+
+[We can conclude that the data is non-stationary.\
+\
+The training data was transformed by taking the difference of the training data, and an ADF and KPSS test was tested on the transformed data.\
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE}
+y_4 = diff((train_seg$VIX), difference=1)
+y_4.adf = adf.test(y_4)
+y_4.kpss = kpss.test(y_4)
+```
+
+[We can conclude that the transformed data is stationary. \
+\
+The ACF and PACF plots of the transformed data were taken to identify AR or MA signatures.\
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+acf(y_4, lag.max = 30, na.action = na.pass, xlab="Lag", ylab="Sample ACF", main="", sub="Figure 14")
+pacf(y_4, lag.max = 30, na.action = na.pass, xlab="Lag", ylab="Partial Sample ACF", main="", sub="Figure 15")
+```
+
+[The ACF and PACF plot does not indicate alot.\
+However, we can find the optimal value of p and q by finding orders with the lowest AIC and BIC scores. After testing for this, p = 2 and q = 2. The above plots do not indicate any seasonality too. \
+Therefore, we choose these parameters as our first model's parameters. \
+]{style="Baskerville; font-size:1.5em;"}
+
+## Fitting and Diagnostics <a name="fittingdiag"></a> {#fittingdiag}
+
+[Before deploying the model for real-world analysis, the model needs to achieve certain conditions on the training data itself, such as the difference between the training data predictions and actual training data must be a white noise process.\
+Let $\hat{y}$ be training data predictions, and $y$ be actual training data.\
+The difference: $\hat{y} - y = w$ \
+Where w is drawn from a white noise distribution, this is so that our predictions only deviate from actual observation due to some random effect and not from some other influence. \
+\
+The difference between $\hat{y}$ and $y$ is called residuals, and the residuals should have a normal distribution due to the powerful properties of Maximum Likelihood Estimation. However, achieving this result in a real-world dataset can be very challenging. As mentioned in the Introduction, certain global events can influence the VIX, which can be very hard to include in the model and predict.
+\
+Specific tests let us judge our model based on the criteria stated above, but in the end, what model needs to be used is our judgment, which must be logically decided for the particular problem. \
+\
+**Model 1: ARMA(2, 2)**\
+In order to test if the residuals follow a white noise process, we can plot the ACF and PACF of residuals, the time plot of residuals, and the Ljung-Box test provides a statistical inference on the corrrelation of residuals.\
+If the time plot of residuals looks random without any trend, we can assume it is white noise.\
+If the ACF and PACF are within the bounds, we can deduce that the residuals are white noise.\
+If the Ljung-Box test p-value is more significant than 0.01, we infer that the residuals are uncorrelated.\
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+y_3.fit1 = arima(y_3, order=c(2, 0, 2), method="ML", include.mean = FALSE)
+plot(residuals(y_3.fit1), xlab="time", ylab="First-Order Difference of transformed training data", type="l", sub="Figure 16")
+acf(residuals(y_3.fit1), lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Error ACF", main="", sub="Figure 17")
+pacf(residuals(y_3.fit1), lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Error Partial ACF", main="", sub="Figure 18")
+Box.test(residuals(y_3.fit1), lag=1)
+```
+
+[From the above, we can conclude that the residuals are white noise process and is uncorrelated.\
+\
+In order to test if the white noise process is drawn from a normal distribution, we can plot the QQ plot, and the Shapiro-Wilk test provides a statistical inference of the residuals' distribution.\
+If the residuals lie within the line, we can deduce that residuals are normally distributed.\
+If the Shapiro-Wilk test p-value is more than 0.01, we infer that the residuals follow a white noise process. But this test is very sensitive to large dataset and often results in a less than 0.01 p-value. \
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10, message=FALSE}
+shapiro.test(residuals(y_3.fit1))
+ggqqplot(residuals(y_3.fit1)) + labs(title="QQ plot of residuals")
+```
+
+[From the above, we can conclude that the residuals is not normally distributed from shapiro-wilk test, but in the QQ plot of residuals roughly falls into the bounds.\ 
+\
+\
+**Model 2: ARMA(2, 2)**
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+y_4.fit1 = arima(y_4, order=c(2, 0, 2), method="ML", include.mean = FALSE)
+plot(residuals(y_4.fit1), xlab="time", ylab="First-Order Difference of training data", type="l", sub="Figure 19")
+acf(residuals(y_4.fit1), lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Error ACF", main="", sub="Figure 20")
+pacf(residuals(y_4.fit1), lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Error Partial ACF", main="", sub="Figure 21")
+Box.test(residuals(y_4.fit1), lag=1)
+```
+
+[From the above we can conclude that the residuals are white noise process and it is uncorrelated.\ 
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10, message=FALSE}
+shapiro.test(residuals(y_4.fit1))
+ggqqplot(residuals(y_4.fit1)) + labs(title="QQ plot of residuals")
+```
+
+[From the above, the Shapiro-Wilk fails, and in the QQ-plot there is a slight deviation from normality at right.\
+\
+From the above two models, both seem to deviate from normality, model 2 more than model 1. It is desirable to have normally distributed residuals, due to time constraints I was unable to figure a way out of this. Nevertheless, considering the context of this analysis and an overview of the dataset, it makes more sense to use model 2 as our final model for predictions makes more sense. As mentioned in the introduction, data from a different period may be useless for future predictions from the present.\
+]{style="Baskerville; font-size:1.5em;"}
+
+## Forecasting <a name="forecasting"></a> {#forecasting}
+
+[One of the primary objectives of building a model for a time series is to be able to forecast the values for that series at future times. Of equal importance is the assessment of the precision of those forecasts [4]. We will test the goodness of the forecast by comparing it to the test dataset, which we had kept apart.\
+\
+The following formula gives the forecast of the time series:
+$X_{t} = \phi_{1} X_{t-1} + \phi_{2} X_{t-2} + W_{t} + \theta_{1} W_{t-1} + \theta_{2} W_{t-2}$\
+Where $\phi_{1}$ and $\phi_{2}$ are coefficients of the AR part of the ARMA model, and $\theta_{1}$ and $\theta_{2}$ are the coefficients of the MA part of the ARMA model.\
+\
+We will be forecasting 1 step; therefore, we will use every data point from 2010 January to the time we are in now and iterate through 2021, December 01, which forecasts the value of VIX at 2021, December 23. One way to estimate how correct our prediction is by calculating the Root Mean Square Error (RMSE),\
+RMSE = $\sqrt{\frac{\sum_{i=1}^{N}(\hat{x_{t}} - x_{t})^{2}}{N}}$\
+where $\hat{x_{t}}$ is predicted value and $x_{t}$ is the actual value.\
+\
+We can develop a prediction interval that gives a bound for our prediction; we will be using a 95% confidence interval, \
+Prediction interval: ($\hat{x_{t+1|t}} - 1.96*\sigma_{1}, \hat{x_{t+1|t}} + 1.96*\sigma_{1}$) \
+where $\sigma_{1}$ is the standard error of prediction.\
+\
+It is crucial to have an accurate prediction interval, and a low RMSE value as these predictions could decide customers' behavior in the stock exchange and have a real-life stake.\
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, include=FALSE}
+nTrain = length(train_seg$VIX)
+nTest = length(test_seg$VIX)
+
+test_seg.forecast = matrix(0, nTest, 1)
+test_seg.res = matrix(0, nTest, 1)
+test_seg.se = matrix(0, nTest, 1)
+
+for (i in (nTrain:(nTrain+nTest-1))){
+  test_seg.fit = arima((data_seg$VIX[seg_start:i]), order=c(2, 1, 2), method="ML", include.mean=TRUE)
+  output = predict(test_seg.fit, se.fit = TRUE)
+  test_seg.forecast[i-nTrain+1] = (as.numeric(output$pred))
+  test_seg.res[i-nTrain+1, 1] = (as.numeric(output$pred)) - data$VIX[i+1]
+  test_seg.se[i-nTrain+1, 1] = (as.numeric(output$se))
+}
+
+test_seg.forecast = data.frame(test_seg.forecast)
+names(test_seg.forecast)[1] = "VIX"
+test_seg.forecast$Date = test_seg$Date
+test_seg.forecast = test_seg.forecast[c("Date", "VIX")]
+
+test_seg.res = data.frame(test_seg.res)
+names(test_seg.res)[1] = "VIX"
+test_seg.res$Date = test_seg$Date
+test_seg.res = test_seg.res[c("Date", "VIX")]
+
+test_seg.se = data.frame(test_seg.se)
+names(test_seg.se)[1] = "VIX"
+test_seg.se$Date = test_seg$Date
+test_seg.se = test_seg.se[c("Date", "VIX")]
+```
+
+[Taking a time plot of the forecasted value and actual values of the test data shows us that our predictions are following the predictions and nearly only miss some points.\
+Here the red dots indicate forecast and blue dots indicate actual values  of VIX.]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+plot(test_seg.forecast, type="b", pch=19, col="red", xlab="Time", ylab="Time Series", ylim=c(0,50), main="Forecast vs Actual", sub="Figure 22")
+lines(test_seg, pch=18, col="blue", type="b", lty=12)
+```
+[The RMSE value of the model = 7.622863.\
+The RMSE value is relatively high, whereas according to [5], the RMSE value the study got for ten days forecast was 5.2.\
+\
+A time plot of the forecasted value and actual values of the test data with the prediction bounds shows that most of the values fall within the boundaries.\
+Here the black line indicate actual values of VIX, red line indicate the forecast values, and the blue shading is the prediction interval.
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+plot(test_seg, type="l", pch=19, col="black", xlab="Time", ylab="Time Series", ylim=c(0, 50), main="Forecast vs Actual: With Predicition Boundaries", sub="Figure 23")
+lines(x=test_seg.forecast$Date, y=test_seg.forecast$VIX, pch=18, col="red", type="l", lty=12)
+lines(x=test_seg.forecast$Date, y=(test_seg.forecast$VIX + 1.96*test_seg.se$VIX), pch=18, col="grey", type="l", lty=12)
+lines(x=test_seg.forecast$Date, y=(test_seg.forecast$VIX - 1.96*test_seg.se$VIX), pch=18, col="grey", type="l", lty=12)
+polygon(c(test_seg.forecast$Date, rev(test_seg.forecast$Date)), c((test_seg.forecast$VIX + 1.96*test_seg.se$VIX), rev((test_seg.forecast$VIX - 1.96*test_seg.se$VIX))),
+        col = "blue", density = 5)
+```
+
+[An overall time plot with the entire dataset with the forecast is as follows.
+Here black is the actual VIX values, red is the forecasted values, and the blue boundary is the predicition interval.
+]{style="Baskerville; font-size:1.5em;"}
+
+```{r, echo=FALSE, fig.width=10}
+plot(data, type="l", col="black", main="Entire dataset: Forecast vs Actual", sub="Figure 24")
+lines(test_seg.forecast, type="l", col="red")
+lines(x=test_seg.forecast$Date, y=test_seg.forecast$VIX, pch=18, col="red", type="l", lty=12)
+lines(x=test_seg.forecast$Date, y=(test_seg.forecast$VIX + 1.96*test_seg.se$VIX), pch=18, col="grey", type="l", lty=12)
+lines(x=test_seg.forecast$Date, y=(test_seg.forecast$VIX - 1.96*test_seg.se$VIX), pch=18, col="grey", type="l", lty=12)
+polygon(c(test_seg.forecast$Date, rev(test_seg.forecast$Date)), c((test_seg.forecast$VIX + 1.96*test_seg.se$VIX), rev((test_seg.forecast$VIX - 1.96*test_seg.se$VIX))),
+        col = "blue", density = 5)
+```
+
+## Discussion <a name="discussion"></a> {#discussion}
+
+[From our forecast results, we can witness that our prediction of VIX using Time Series Analysis was successful to some degree. However, more than the forecast, it is the prediction interval that must be used by someone who is deciding on the implied volatility of the market as this provides a range of future value of reasonable accuracy.\
+\
+However, our predictions are not picture-perfect from Figure 23; during the times 2021 September to November, our forecast deviates from the actual values. This deviation could indicate either that our model was inadequate for predicting or that there was some external geopolitical situation that caused a change from its usual trend. We could hypothesize if this were due to the Delta variant of Covid-19 that hit in 2021, August-November, but that is out of scope for our project.\
+\
+One of the main issues faced in this project was getting the residuals to have a white noise process; this could indicate the shortcomings of the proposed model for predicting VIX.\
+]{style="Baskerville; font-size:1.5em;"}
+
+## Bibliography <a name="bibliography"></a> {#bibliography}
+
+[ [1] https://www.wallstreetmojo.com/realized-volatility/ \
+  [2] https://www.investopedia.com/terms/i/iv.asp/ \
+  [3] https://www.investopedia.com/terms/v/vix.asp/ \
+  [4] Time Series Analysis With Applications in R. Jonathan D. Cryer, Kung-Sik Chan. \
+  [5] https://www.etf.com/publications/journalofindexes/joi-articles/10096-realized-volatility-indexes.html/page/0/3\
+]{style="Baskerville; font-size:1.5em;"}
+
+## Appendices <a name="appendices"></a> {#appendices}
+
+[The R codes used for this project are mentioned below, I followed Box-Jenkins workflow for analysis.\
+]{style="Baskerville; font-size:1.5em;"}
+
+<span style="Baskerville; font-size:1.5em;">
+
+</span>
+
+```{r, global_options, include=FALSE}
+knitr::opts_chunk$set(message=FALSE, tidy.opts=list(width.cutoff=60), tidy=TRUE) 
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, tidy.opts=list(width.cutoff=60)) 
+suppressPackageStartupMessages(library(ggplot2))
+```
+
+### Import Libraries
+
+```{r}
+library(ggplot2)
+library(splitTools)
+library(tseries)
+library(aTSA)
+library(TSA)
+library(gdata)
+library(psych) 
+library(dplyr)
+library(gdata)
+```
+
+### Import Dataset
+
+```{r}
+setwd("C:/Users/nithi/OneDrive - University of Toronto/Year -4/STA457/project")
+data = read.csv("Data.csv")
+```
+
+### Data Preprocessing
+
+```{r}
+data$ï..Date = as.Date(data$ï..Date)
+names(data)[names(data) == "ï..Date"] <- "Date"
+```
+
+```{r, fig.width=10}
+plot(data, type="l", col="Black", xlim=c(as.Date("1990-02-01"), as.Date("2021-12-13")))
+abline(v=as.Date("1993-06-01"), col="blue")
+abline(v=as.Date("1998-06-01"), col="blue")
+abline(v=as.Date("2002-12-01"), col="blue")
+abline(v=as.Date("2007-09-01"), col="blue")
+abline(v=as.Date("2009-12-01"), col="blue")
+abline(v=as.Date("2020-12-01"), col="blue")
+```
+
+```{r}
+seg_start = which(data$Date==as.Date("2009-12-01"))
+data_seg = subset(data, Date>=as.Date("2009-12-01"))
+train_seg = subset(data_seg, Date<=as.Date("2020-12-01"))
+test_seg = subset(data_seg, Date>as.Date("2020-12-01"))
+```
+
+
+```{r}
+idx = 1:as.integer(dim(data)[1] * 0.9)
+train = data[idx, ]
+test = data[-idx, ]
+```
+
+
+### Model Specification
+
+#### No segmentation
+
+```{r}
+cummeanx = cumsum(train$VIX) / seq_along(train$VIX)
+plot(train$Date, train$VIX, xlab="time", ylab="Time Series VIX", type="l")
+plot(cummeanx, xlab="time", ylab="Mean Level", type="l")
+hist(train$VIX, col="Steelblue")
+acf(train$VIX, lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Sample ACF", main="")
+pacf(train$VIX, lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Partial Sample ACF", main="")
+```
+
+```{r}
+VIX.adf = adf.test(train$VIX)
+VIX.kpss = kpss.test(train$VIX)
+```
+
+##### Model 1
+
+```{r}
+y_3 = diff((1/train$VIX), differences=1)
+
+cummeany_3 = cumsum(y_3) / seq_along(y_3)
+
+plot(y_3, xlab="time", ylab="First-Order Difference of VIX", type="l")
+plot(cummeany_3, xlab="time", ylab="Mean Level First-Order Difference of VIX", type="l")
+acf(y_3, lag.max = 30, na.action = na.pass, xlab="Lag", ylab="Sample ACF", main="")
+pacf(y_3, lag.max = 30, na.action = na.pass, xlab="Lag", ylab="Partial Sample ACF", main="")
+```
+
+
+```{r}
+y_3.adf = adf.test(y_3)
+y_3.kpss = kpss.test(y_3)
+```
+
+```{r}
+y_3.eacf = eacf(y_3, ar.max=5, ma.max=5)
+```
+
+```{r}
+y_3.aic = matrix(0, 5, 5)
+y_3.bic = matrix(0, 5, 5)
+
+for (i in 0:4) for (j in 0:4){
+  y_3.fit = arima(y_3, order=c(i, 0, j), method="ML", include.mean=TRUE)
+  y_3.aic[i+1, j+1] = AIC(y_3.fit)
+  y_3.bic[i+1, j+1] = BIC(y_3.fit)
+}
+
+y_3.aic_vec = sort(unmatrix((y_3.aic), byrow=FALSE))[1:13]
+y_3.bic_vec = sort(unmatrix((y_3.bic), byrow=FALSE))[1:13]
+```
+
+```{r}
+y_3.aic_vec
+```
+
+```{r}
+y_3.bic_vec
+```
+##### Model Diagnostics
+
+```{r}
+y_3.fit1 = arima(y_3, order=c(2, 0, 2), method="ML", include.mean = FALSE)
+plot(residuals(y_3.fit1), xlab="time", ylab="First-Order Difference of VIX", type="l")
+acf(residuals(y_3.fit1), lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Error ACF", main="")
+pacf(residuals(y_3.fit1), lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Error Partial ACF", main="")
+Box.test(residuals(y_3.fit1), lag=1, type = "Ljung")
+```
+```{r}
+qqnorm(residuals(y_3.fit1))
+qqline(residuals(y_3.fit1))
+hist(residuals(y_3.fit1), col='steelblue')
+shapiro.test(residuals(y_3.fit1))
+ks.test(residuals(y_3.fit1), "pnorm")
+```
+
+#### With segmentation
+
+```{r}
+cummeanx = cumsum(train_seg$VIX) / seq_along(train_seg$VIX)
+plot(train_seg$Date, train_seg$VIX, xlab="time", ylab="Time Series VIX", type="l")
+plot(cummeanx, xlab="time", ylab="Mean Level", type="l")
+hist(train_seg$VIX, col="Steelblue")
+acf(train_seg$VIX, lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Sample ACF", main="")
+pacf(train_seg$VIX, lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Partial Sample ACF", main="")
+```
+
+```{r}
+VIX_seg.adf = adf.test(train_seg$VIX)
+VIX_seg.kpss = kpss.test(train_seg$VIX)
+```
+
+##### Model 2
+
+```{r}
+y_4 = diff((train_seg$VIX), difference=1)
+
+cummeany_4 = cumsum(y_4) / seq_along(y_4)
+
+plot(y_4, xlab="time", ylab="First-Order Difference of VIX", type="l")
+plot(cummeany_4, xlab="time", ylab="Mean Level First-Order Difference of VIX", type="l")
+acf(y_4, lag.max = 30, na.action = na.pass, xlab="Lag", ylab="Sample ACF", main="")
+pacf(y_4, lag.max = 30, na.action = na.pass, xlab="Lag", ylab="Partial Sample ACF", main="")
+```
+```{r}
+y_4.adf = adf.test(y_4)
+y_4.kpss = kpss.test(y_4)
+```
+```{r}
+y_4.eacf = eacf(y_4, ar.max=5, ma.max=5)
+```
+
+
+```{r}
+y_4.aic = matrix(0, 5, 5)
+y_4.bic = matrix(0, 5, 5)
+
+for (i in 0:4) for (j in 0:4){
+  y_4.fit = arima(y_4, order=c(i, 0, j), method="ML", include.mean=TRUE)
+  y_4.aic[i+1, j+1] = AIC(y_4.fit)
+  y_4.bic[i+1, j+1] = BIC(y_4.fit)
+}
+
+y_4.aic_vec = sort(unmatrix((y_4.aic), byrow=FALSE))[1:13]
+y_4.bic_vec = sort(unmatrix((y_4.bic), byrow=FALSE))[1:13]
+```
+
+```{r}
+y_4.aic_vec
+```
+
+```{r}
+y_4.bic_vec
+```
+
+##### Model Diagnostics
+
+```{r}
+y_4.fit1 = arima(y_4, order=c(2, 0, 2), method="ML", include.mean = FALSE)
+plot(residuals(y_4.fit1), xlab="time", ylab="First-Order Difference of VIX", type="l")
+acf(residuals(y_4.fit1), lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Error ACF", main="")
+pacf(residuals(y_4.fit1), lag.max = 20, na.action = na.pass, xlab="Lag", ylab="Error Partial ACF", main="")
+Box.test(residuals(y_4.fit1), lag=1)
+```
+```{r}
+qqnorm(residuals(y_4.fit1))
+qqline(residuals(y_4.fit1))
+#hist(residuals(y_4.fit1), col='steelblue')
+shapiro.test(residuals(y_4.fit1))
+ks.test(residuals(y_4.fit1), "pnorm")
+```
+
+### Parameter Estimation
+
+```{r}
+y_3.param = y_3.fit1$coef
+y_4.param = y_4.fit1$coef
+```
+
+### Model Specification
+
+```{r}
+y_3.fit1
+(AIC(y_3.fit1))
+(BIC(y_3.fit1))
+harmonic.mean(y_3.fit1$residuals)
+```
+```{r}
+y_4.fit1
+(AIC(y_4.fit1))
+(BIC(y_4.fit1))
+harmonic.mean(y_4.fit1$residuals)
+```
+
+### Model Forecasting
+
+#### No segmentation
+
+```{r}
+nTrain = length(train$VIX)
+nTest = length(test$VIX)
+
+test.forecast = matrix(0, nTest, 1)
+test.res = matrix(0, nTest, 1)
+test.se = matrix(0, nTest, 1)
+
+for (i in (nTrain:(nTrain+nTest-1))){
+  test.fit = arima(1/(data$VIX[1:i]), order=c(2, 1, 1), method="ML", include.mean=TRUE)
+  output = predict(test.fit)
+  test.forecast[i-nTrain+1] = 1/(as.numeric(output$pred)+.Machine$double.eps)
+  test.res[i-nTrain+1, 1] = 1/(as.numeric(output$pred)+.Machine$double.eps) - data$VIX[i+1]
+  test.se[i-nTrain+1, 1] = as.numeric(output$se)
+}
+```
+
+```{r}
+plot(unlist(test.forecast), type="b", pch=19, col="red", xlab="Time", ylab="Time Series")
+lines(data$VIX[(nTrain+1):(nTrain+nTest)], pch=18, col="blue", type="b", lty=12)
+```
+
+
+```{r}
+plot(unlist(test.forecast), type="b", pch=19, col="red", xlab="Time", ylab="Time Series")
+lines(unlist(test.forecast)+unlist(test.se), pch=18, col="grey", type="b", lty=12)
+lines(unlist(test.forecast)-unlist(test.se), pch=18, col="grey", type="b", lty=12)
+```
+
+```{r}
+RMSE <- function(x){
+  fval = sqrt(sum(x^2)/length(x))
+  return(fval)
+}
+
+RMSE(test.res)
+```
+
+#### With segmentation
+
+```{r}
+nTrain = length(train_seg$VIX)
+nTest = length(test_seg$VIX)
+
+test_seg.forecast = matrix(0, nTest, 1)
+test_seg.res = matrix(0, nTest, 1)
+test_seg.se = matrix(0, nTest, 1)
+
+for (i in (nTrain:(nTrain+nTest-1))){
+  test_seg.fit = arima((data_seg$VIX[seg_start:i]), order=c(2, 1, 2), method="ML", include.mean=TRUE)
+  output = predict(test_seg.fit, se.fit = TRUE)
+  test_seg.forecast[i-nTrain+1] = (as.numeric(output$pred))
+  test_seg.res[i-nTrain+1, 1] = (as.numeric(output$pred)) - data$VIX[i+1]
+  test_seg.se[i-nTrain+1, 1] = (as.numeric(output$se))
+}
+
+test_seg.forecast = data.frame(test_seg.forecast)
+names(test_seg.forecast)[1] = "VIX"
+test_seg.forecast$Date = test_seg$Date
+test_seg.forecast = test_seg.forecast[c("Date", "VIX")]
+
+test_seg.res = data.frame(test_seg.res)
+names(test_seg.res)[1] = "VIX"
+test_seg.res$Date = test_seg$Date
+test_seg.res = test_seg.res[c("Date", "VIX")]
+
+test_seg.se = data.frame(test_seg.se)
+names(test_seg.se)[1] = "VIX"
+test_seg.se$Date = test_seg$Date
+test_seg.se = test_seg.se[c("Date", "VIX")]
+```
+
+
+```{r}
+plot(test_seg.forecast, type="b", pch=19, col="red", xlab="Time", ylab="Time Series", ylim=c(0,50))
+lines(test_seg, pch=18, col="blue", type="b", lty=12)
+```
+
+
+```{r}
+plot(test_seg.forecast, type="b", pch=19, col="red", xlab="Time", ylab="Time Series", ylim=c(0, 50))
+lines(x=test_seg.forecast$Date, y=test_seg.forecast$VIX+test_seg.se$VIX, pch=18, col="grey", type="b", lty=12)
+lines(x=test_seg.forecast$Date, y=test_seg.forecast$VIX-test_seg.se$VIX, pch=18, col="grey", type="b", lty=12)
+```
+
+```{r}
+RMSE <- function(x){
+  fval = sqrt(sum(x^2)/length(x))
+  return(fval)
+}
+
+RMSE(test_seg.res$VIX)
+```
+
+```{r}
+plot(test_seg, type="l", pch=19, col="black", xlab="Time", ylab="Time Series", ylim=c(0, 50))
+lines(x=test_seg.forecast$Date, y=test_seg.forecast$VIX, pch=18, col="red", type="l", lty=12)
+lines(x=test_seg.forecast$Date, y=(test_seg.forecast$VIX + 1.96*test_seg.se$VIX), pch=18, col="grey", type="l", lty=12)
+lines(x=test_seg.forecast$Date, y=(test_seg.forecast$VIX - 1.96*test_seg.se$VIX), pch=18, col="grey", type="l", lty=12)
+polygon(c(test_seg.forecast$Date, rev(test_seg.forecast$Date)), c((test_seg.forecast$VIX + 1.96*test_seg.se$VIX), rev((test_seg.forecast$VIX - 1.96*test_seg.se$VIX))),
+        col = "blue", density = 10)
+```
+```{r, fig.width=10}
+plot(data, type="l", col="black")
+lines(test_seg.forecast, type="l", col="red")
+lines(x=test_seg.forecast$Date, y=(test_seg.forecast$VIX + 1.96*test_seg.se$VIX), pch=18, col="grey", type="l", lty=12)
+lines(x=test_seg.forecast$Date, y=(test_seg.forecast$VIX - 1.96*test_seg.se$VIX), pch=18, col="grey", type="l", lty=12)
+polygon(c(test_seg.forecast$Date, rev(test_seg.forecast$Date)), c((test_seg.forecast$VIX + 1.96*test_seg.se$VIX), rev((test_seg.forecast$VIX - 1.96*test_seg.se$VIX))),
+        col = "blue", density = 10)
+```
+
